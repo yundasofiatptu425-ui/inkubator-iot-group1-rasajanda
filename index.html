@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Pro Inkubator Telur - Kelompok 1</title>
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+        body { background-color: #f8f9fa; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .card { box-shadow: 0 4px 8px rgba(0,0,0,0.1); border: none; border-radius: 10px; margin-bottom: 20px; }
+        .val-text { font-size: 2.5rem; font-weight: bold; }
+        .indicator { width: 20px; height: 20px; border-radius: 50%; display: inline-block; margin-right: 10px; }
+        .lamp-on { background-color: #f1c40f; box-shadow: 0 0 10px #f1c40f; }
+        .lamp-off { background-color: #bdc3c7; }
+        .fan-on { background-color: #3498db; box-shadow: 0 0 10px #3498db; }
+        .fan-off { background-color: #bdc3c7; }
+        .table-wrapper { max-height: 400px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+
+<div class="container py-4">
+    <h2 class="text-center mb-4 border-bottom pb-3">⚙️ MONITORING INKUBATOR TELUR (PRO)</h2>
+
+    <div class="card p-3 bg-white">
+        <div class="row align-items-center">
+            <div class="col-md-4">
+                <label><strong>Interval Logging (Menit):</strong></label>
+                <div class="input-group">
+                    <input type="number" id="inputInterval" class="form-control" value="1" min="1">
+                    <button class="btn btn-secondary" onclick="setInterval()">Set</button>
+                </div>
+            </div>
+            <div class="col-md-4 text-center mt-3 mt-md-0">
+                <button id="btnStart" class="btn btn-success fw-bold px-4 me-2" onclick="toggleLogging(true)">▶ START LOG</button>
+                <button id="btnStop" class="btn btn-danger fw-bold px-4" onclick="toggleLogging(false)">⏹ STOP LOG</button>
+            </div>
+            <div class="col-md-4 text-end mt-3 mt-md-0">
+                <span id="logStatus" class="badge bg-success fs-6 p-2">Status: LOGGING JALAN</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-3">
+            <div class="card text-center p-3">
+                <h5 class="text-muted">Suhu Saat Ini</h5>
+                <div class="val-text text-danger"><span id="rt-suhu">--.-</span>°C</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center p-3">
+                <h5 class="text-muted">Kelembapan</h5>
+                <div class="val-text text-primary"><span id="rt-hum">--</span>%</div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card p-3 h-100 justify-content-center">
+                <h5>Status Alat & Kondisi Khusus</h5>
+                <div class="d-flex justify-content-between align-items-center mt-2">
+                    <div>
+                        <div id="ind-lampu" class="indicator lamp-off"></div> <strong>Lampu Pemanas</strong>
+                        <br>
+                        <div id="ind-kipas" class="indicator fan-off mt-2"></div> <strong>Kipas Sirkulasi</strong>
+                    </div>
+                    <div class="text-end">
+                        <span id="kondisi-khusus" class="badge bg-secondary fs-6 p-2">Menunggu Data...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-7">
+            <div class="card p-3">
+                <h5>📈 Grafik Suhu & Kelembapan</h5>
+                <canvas id="myChart" height="150"></canvas>
+            </div>
+        </div>
+        
+        <div class="col-md-5">
+            <div class="card p-3">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h5 class="m-0">📋 Tabel Data</h5>
+                    <button class="btn btn-sm btn-outline-success" onclick="downloadCSV()">📥 Download Excel</button>
+                </div>
+                <div class="table-wrapper">
+                    <table class="table table-striped table-hover table-sm text-center">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Waktu</th>
+                                <th>Suhu (°C)</th>
+                                <th>Lembap (%)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody">
+                            </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+
+<script>
+    // ================= 1. KONFIGURASI FIREBASE =================
+    // !!! WAJIB GANTI DENGAN KODE FIREBASE KALIAN !!!
+    const firebaseConfig = {
+        apiKey: "AIzaSyAPvaAMhccxrRedhDrpjEDZDW-WfZjPkFA",
+        authDomain: "inkubatortelur-group1.firebaseapp.com",
+        databaseURL: "https://inkubatortelur-group1-default-rtdb.firebaseio.com",
+        projectId: "inkubatortelur-group1",
+        storageBucket: "inkubatortelur-group1.appspot.com",
+        messagingSenderId: "1049772171486",
+        appId: "1:1049772171486:web:241cc5ccf993e4ace3a24f",
+    };
+    firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+
+    // ================= 2. VARIABEL LOGGING =================
+    let isLogging = true;
+    let logIntervalMs = 1 * 60000; // Default 1 Menit
+    let lastLogTime = 0;
+    
+    // Variabel Hysteresis Status (meniru Arduino)
+    let stateLampu = false;
+    let stateKipas = false;
+
+    // ================= 3. INISIALISASI GRAFIK =================
+    const ctx = document.getElementById('myChart').getContext('2d');
+    const myChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [
+                { label: 'Suhu (°C)', borderColor: '#e74c3c', backgroundColor: 'rgba(231, 76, 60, 0.2)', data: [], tension: 0.3, yAxisID: 'y' },
+                { label: 'Kelembapan (%)', borderColor: '#3498db', backgroundColor: 'rgba(52, 152, 219, 0.2)', data: [], tension: 0.3, yAxisID: 'y1' }
+            ]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: { type: 'linear', display: true, position: 'left', title: {display: true, text: 'Suhu'} },
+                y1: { type: 'linear', display: true, position: 'right', grid: {drawOnChartArea: false}, title: {display: true, text: 'Kelembapan'} }
+            }
+        }
+    });
+
+    // ================= 4. AMBIL DATA DARI FIREBASE =================
+    const dbRef = database.ref('/Inkubator');
+    dbRef.on('value', (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+            const suhu = data.Suhu;
+            const hum = data.Kelembapan;
+            const now = new Date();
+            const timeString = now.toLocaleTimeString('id-ID');
+
+            // --- A. UPDATE TAMPILAN REAL-TIME (Langsung Berubah) ---
+            document.getElementById('rt-suhu').innerText = suhu.toFixed(1);
+            document.getElementById('rt-hum').innerText = hum.toFixed(1);
+
+            // Logika Status Lampu & Kipas (Disinkronkan dengan Arduino kalian)
+            if (suhu < 37.5) stateLampu = true;
+            else if (suhu >= 38.0) stateLampu = false;
+
+            if (suhu > 38.5) stateKipas = true;
+            else if (suhu <= 38.0) stateKipas = false;
+
+            document.getElementById('ind-lampu').className = stateLampu ? "indicator lamp-on" : "indicator lamp-off";
+            document.getElementById('ind-kipas').className = stateKipas ? "indicator fan-on" : "indicator fan-off";
+
+            // Kondisi Khusus
+            const badgeKondisi = document.getElementById('kondisi-khusus');
+            if (suhu < 37.0) {
+                badgeKondisi.innerText = "⚠️ Suhu Drop (Pemanasan)"; badgeKondisi.className = "badge bg-warning text-dark fs-6 p-2";
+            } else if (suhu >= 37.0 && suhu <= 38.2) {
+                badgeKondisi.innerText = "✅ Kondisi Ideal"; badgeKondisi.className = "badge bg-success fs-6 p-2";
+            } else {
+                badgeKondisi.innerText = "🔥 OVERHEAT (Mendinginkan)"; badgeKondisi.className = "badge bg-danger fs-6 p-2";
+            }
+
+            // --- B. LOGGING KE TABEL & GRAFIK (Berdasarkan Interval) ---
+            if (isLogging && (Date.now() - lastLogTime >= logIntervalMs)) {
+                lastLogTime = Date.now();
+                
+                // Tambah ke Tabel
+                const tbody = document.getElementById('tableBody');
+                const row = `<tr><td>${timeString}</td><td>${suhu.toFixed(1)}</td><td>${hum.toFixed(1)}</td></tr>`;
+                tbody.insertAdjacentHTML('afterbegin', row); // Masukkan di baris paling atas
+
+                // Tambah ke Grafik
+                myChart.data.labels.push(timeString);
+                myChart.data.datasets[0].data.push(suhu);
+                myChart.data.datasets[1].data.push(hum);
+                
+                // Batasi data grafik agar tidak kepanjangan (misal max 15 titik)
+                if(myChart.data.labels.length > 15) {
+                    myChart.data.labels.shift();
+                    myChart.data.datasets[0].data.shift();
+                    myChart.data.datasets[1].data.shift();
+                }
+                myChart.update();
+            }
+        }
+    });
+
+    // ================= 5. FUNGSI TOMBOL-TOMBOL =================
+    function toggleLogging(status) {
+        isLogging = status;
+        const statusBadge = document.getElementById('logStatus');
+        if (isLogging) {
+            statusBadge.innerText = "Status: LOGGING JALAN";
+            statusBadge.className = "badge bg-success fs-6 p-2";
+            lastLogTime = 0; // Langsung log data saat di-start
+        } else {
+            statusBadge.innerText = "Status: LOGGING BERHENTI";
+            statusBadge.className = "badge bg-danger fs-6 p-2";
+        }
+    }
+
+    function setInterval() {
+        const val = document.getElementById('inputInterval').value;
+        if (val > 0) {
+            logIntervalMs = val * 60000; // Ubah menit ke milidetik
+            alert("Interval diubah menjadi " + val + " menit.");
+        }
+    }
+
+    // Export Table ke format CSV (Bisa dibuka pakai Excel)
+    function downloadCSV() {
+        let csv = "Waktu,Suhu (C),Kelembapan (%)\n";
+        const rows = document.querySelectorAll("#tableBody tr");
+        
+        if (rows.length === 0) {
+            alert("Belum ada data untuk didownload!");
+            return;
+        }
+
+        // Ambil data dari tabel (karena kita pakai prepend, urutan di tabel sudah dari terbaru ke terlama)
+        rows.forEach(row => {
+            let cols = row.querySelectorAll("td");
+            csv += `${cols[0].innerText},${cols[1].innerText},${cols[2].innerText}\n`;
+        });
+
+        // Proses Download File
+        let blob = new Blob([csv], { type: "text/csv" });
+        let url = window.URL.createObjectURL(blob);
+        let a = document.createElement("a");
+        a.setAttribute("href", url);
+        a.setAttribute("download", "Data_Inkubator_Kel1.csv");
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    }
+</script>
+</body>
+</html>
